@@ -20,14 +20,23 @@ def sh( values ):
     """
     ------------------------------------------------------------------
     Handling spectral grid = spherical harmonics.
+    NOTE: This is not needed for my new data file since it only contains gg grid.
+    But this function is nice to have incase I get a sh grid in somewhere. 
+     
+    Instead of downloading in totaly raw format(which will contain both sh and gg grid), 
+            it can be downloaded as already converted gg grid from ECMWF. Else you also have
+            the option in using cdo on the server to convert it one by one to gg.. So this 
+            function is now a third backup kind of.. But it is absolutely proven to work well,
+            its just time consuming. 
     
-    This is from the testfiles in the pygrib
     
     uses:       spharm.spectogrd() to transform grid to gausian grid(gg)
     
     returns:    lats, lons, data
     
-    Issues:     Maybe..Unsurtain about how this works..
+    Source:     pygrib test files on github
+    
+    Issues:  
                 nlats = 180 in original, but this dosent work for me. 
                 nlats = 1280 = size.values, works.
     
@@ -49,7 +58,6 @@ def sh( values ):
     nlats = 1280                        #web sais it shourld be 180.. wellwell, seems to work
     s = spharm.Spharmt( nlons, nlats )  
     
-    
     data = s.spectogrd( fldn )           #Hvis nlats = 180, så feiler denne delen pga hvordan formelen fungerer..
     
     lons = ( 360./nlons ) * np.arange( nlons )
@@ -68,38 +76,40 @@ def get_data( obj, prm, lev, date, timelevel=0 ):
     """
     ------------------------------------------------------------------
     fatching the data and finds it latitude and longditude. 
-    parameters: - gfile     = grib file name
+    parameters: - obj       = object of the open file. 
                 - prm       = parameter name that we want to find
                 - lev       = level. States which level we want to take or data from, feks 1000 hpa level.
+                - date      = which date to get
                 - timelevel = which time we want. 0: time 0000UTC, 1: time 1200UTC, 2: time 1800UTC
     
     uses:       Pygrib for reading grib file. 
     
-    returns:    lat, lon, data
+    returns:    - lat, lon  = lat,lon
+                - data      = values of the parameter. 
+    issues: Dont understand why I need to do lon-180 for it to use the whole map. 
+            Maybe this can be fixed when defining the drawing of the map or m object..?
+            For now lon-180 works fine, but think it can be avoided. 
         
     -------------------------------------------------------------------
     """
     
-    #obj = pygrib.open( gfile )    #This will be open everytime.. Not very good. Should only open once and the close!..
-    #print (prm)
     parameter = obj( name = prm, level = lev, dataDate = date )[ timelevel ]
-    print(parameter.dataDate)
+    print( parameter.dataDate )
+    
+    #-----Checking grit type----------------------------------------------
     if parameter.gridType == "sh":
         lat, lon, data = sh( parameter.values )
     elif parameter.gridType == "reduced_gg":
         lat, lon = parameter.latlons() #very easy implementastion with a gg
-        lon = lon-180.
+        lon = lon - 180.        #else it only draws on half the map
         data = parameter.values
     elif parameter.gridType == "regular_gg":
         lat, lon = parameter.latlons() #very easy implementastion with a gg
-        lon = lon-180.
+        lon = lon - 180.        #else it only draws on half the map
         data = parameter.values
     else: 
         print ( parameter.gridType )
-     
-      
-    #obj.close()
-      
+           
     return lat, lon, data
 
 def plot_contourf( m, lat, lon, data, C, contur_val=None ):
@@ -113,7 +123,9 @@ def plot_contourf( m, lat, lon, data, C, contur_val=None ):
                 - lon       = longditude
                 - data      = the data values of our parameter
                 - C         = which Color to use.
-    Alternatice colors: #CS = m.contourf(x,y,data,15,cmap=plt.cm.jet)
+                -contur_val = int:How many contours to plot.
+    Alternatice colors: -#CS = m.contourf(x,y,data,15,cmap=plt.cm.jet)
+                        - See version 2.5
 
      
     -------------------------------------------------------------------
@@ -122,9 +134,9 @@ def plot_contourf( m, lat, lon, data, C, contur_val=None ):
     x, y = m( lon,lat )
     min = data.min()
     if contur_val.any():
-        CS = m.contourf( x, y, data, contur_val, colors = C, vmin = 264 , vmax=384)
+        CS = m.contourf( x, y, data, contur_val, colors = C, vmin = 264 , vmax=384 )
     else:
-        CS = m.contourf( x, y, data, colors = C, vmin = 264 , vmax=384)
+        CS = m.contourf( x, y, data, colors = C, vmin = 264 , vmax=384 )
     
     plt.colorbar( drawedges = True )            # draw colorbar       
      
@@ -137,10 +149,13 @@ def plot_contour( m, lat, lon, data, contour, clr = 'k' ):
                 - lat       = latitude
                 - lon       = longditude
                 - data      = the data values of our parameter
+                - contour
                 - clr       = Color to use.
-    Issues:     Cant find witch contours is nicest to represent. 
-                Have tried:  #[ 1E-4, 1.5E-4, 2E-4, 2.5E-4 ],[1.5E-4,2E-4,2.5E-4], [1.5E-4, 3.E-4],[..]
-    try:        Maybe different levels should have different contour plots..?
+    Issues:     Had problems finding which contour values I should pot to make it nice. 
+                I did try different contour values for different levels, but didnt get any better
+                Ended up with taking the "average" over the vertical levels and then filter it horizontally(see def DT),
+                but its very time consuming, but looks better.
+                Still not great though.. 
     
     -------------------------------------------------------------------
     """
@@ -181,7 +196,6 @@ def plot_wind_bar( m, lat, lon, u, v ):
                 - lon
                 - u
                 - v
-    Issues:     Plots only over scandinavia..
     source:     #http://basemaptutorial.readthedocs.io/en/latest/plotting_data.html
     -------------------------------------------------------------------
     """
@@ -206,17 +220,13 @@ def DT(time_lvl = 0, date = 160924 ):
                      - plot_contourf(m, lat, lon, data, C)
                      - plot_contour(m, lat, lon, data, C)
     
-    Issues:   - Problems with plotting windbarbs: they are only over scandinavia
-                Maybe it has something to do with gridType again? Since everything 
-                else is sh grid witch is converted to gg, while wind, u, v are already reduced gg. 
-                ...reduced...??
-              - How to save ood quality image.. When I try to just save, its very bad..
+    Issues:   Tried using another basemap, one that is more curved, which is what I want, but the vorticity gets   
+                really weird in the North. I dont understand why, so I cant use it yet..
     
     Source:  http://www.atmos.albany.edu/student/abentley/realtime.html
     
     -------------------------------------------------------------------
     """
-    #time_lvl = 0; date = 160924 #160926, 160922,160930
     
     #-------Customised color in RGB ------------
     C = [[232,232,230],#grey
@@ -273,20 +283,20 @@ def DT(time_lvl = 0, date = 160924 ):
     lat, lon, data850 = get_data( obj, 'Vorticity (relative)', 850, date, timelevel = time_lvl )
     
     #->--->---->--mean value over height and filtering----------------
-    data = np.sqrt(data900**2 + 2*data850**2 + data925**2)
-    footprint = np.array([[0,0,0,1,1,1,1,0,0,0],            #footprint=np.ones((3,10))
+    data = np.sqrt( data900**2 + 2*data850**2 + data925**2 ) #Vertical "average", weightet values at 850hpa double.
+    footprint = np.array([[0,0,0,1,1,1,1,0,0,0],             #footprint=np.ones((3,10))
                           [0,0,1,1,1,2,1,1,0,0],
                           [1,1,1,2,2,1,2,1,1,1],
                           [0,1,1,1,1,2,1,1,1,0],
                           [0,0,1,1,1,1,1,1,0,0]])
     
-    data = ndimage.generic_filter(data, np.mean,footprint=footprint, mode='wrap')
-    plot_contour(m, lat,lon, data,contour, clr = 'k')
+    data = ndimage.generic_filter( data, np.mean, footprint = footprint, mode='wrap' )
+    plot_contour( m, lat,lon, data,contour, clr = 'k' )
     
     #-----Wind barbs----------------------------------------------------
     lat, lon, data_u = get_data( obj , 'U component of wind', 2000, date, timelevel = time_lvl )
     lat, lon, data_v = get_data( obj , 'V component of wind', 2000, date, timelevel = time_lvl  )
-    plot_wind_bar(m,lat,lon,data_u,data_v)
+    plot_wind_bar( m, lat, lon, data_u, data_v )
     #-----------------------------------------------
     #-----------------------------------------------
     
@@ -304,14 +314,14 @@ def DT(time_lvl = 0, date = 160924 ):
     else: 
         t = "t_not_set"
     
-    fig_name = "DT/DT_"+str(date)+"_"+str(t)+".TIFF"   
+    fig_name = "DT/DT_" + str( date ) + "_" + str( t )+ ".TIFF"   
     
     ax = plt.gca( )
-    plt.rc('font', size=6)
-    fig.set_size_inches(12.80, 7.15)
+    plt.rc( 'font', size = 6 )
+    fig.set_size_inches( 12.80, 7.15 )
     
-    fig.savefig(fig_name, dpi=600)
-    plt.close()
+    fig.savefig( fig_name, dpi = 600 )
+    plt.close( )
     #plt.show()
     #--------------------------
     #----------------------------
@@ -319,32 +329,29 @@ def DT(time_lvl = 0, date = 160924 ):
 def user_interface():
     parser = argparse.ArgumentParser(description='Process some integers.')
 
-    t = []
+    t = []          #timelevel
     
-    parser.add_argument('--sum', dest='accumulate', action='store_const',
-                        const=sum, default=max,
-                        help='sum the integers (default: find the max)')
     parser.add_argument( "--date", type = int,
         choices= [ 20160920,20160921,20160922,20160923,20160924,20160925,20160926,20160927, 20160928, 20160929, 20160930, 20161001],
         help = "the date you want. " )
     parser.add_argument( "time", type = str,
         help = "the times you want. ex 160924, 160926, 160922, 160930", 
-        default = "all")
+        default = "all" )
         
     args = parser.parse_args( )
     
-    date = [20160920, 20160921, 20160922, 20160923, 20160924, 20160925, 20160926, 20160927, 20160928, 20160929, 20160930, 20161001 ]
+    date = [ 20160920, 20160921, 20160922, 20160923, 20160924, 20160925, 20160926, 20160927, 20160928, 20160929, 20160930, 20161001 ]
     if args.date:
         date = [args.date]
     
-    if args.time =="all":
-        t = [0,1,2]
-    elif args.time == "0000" or args.time =="00" or args.time =="0":
-        t = [0]
-    elif args.time == "1200" or args.time =="12" or args.time =="1":
-        t = [1]
-    elif args.time == "1800" or args.time =="18" or args.time =="2":
-        t = [2]
+    if args.time == "all":
+        t = [ 0, 1, 2 ]
+    elif args.time == "0000" or args.time == "00" or args.time == "0":
+        t = [ 0 ]
+    elif args.time == "1200" or args.time == "12" or args.time == "1":
+        t = [ 1 ]
+    elif args.time == "1800" or args.time == "18" or args.time == "2":
+        t = [ 2 ]
     
     print ("\n-------------------------------------------------------")
     print ("you chosed, time: "+args.time+"corresponding to timelevel: "+str(t))
@@ -361,7 +368,9 @@ def user_interface():
             
     #------------------------------------------------------------    
 
-warnings.filterwarnings("ignore",category=matplotlib.mplDeprecation)
+#matplotlib warns me that I am using a function(hold = on) that is not supported in updatet version of matplotlib. 
+#Though I am not using it, so probably a package that uses it. Might be a problem if I dont update all the packages correctly. 
+warnings.filterwarnings("ignore",category=matplotlib.mplDeprecation) 
 user_interface()  
     
     
