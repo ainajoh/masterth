@@ -64,7 +64,7 @@ def sh( values ):
     
     return lats, lons, data
    
-def get_data( obj, prm, lev, timelevel=0 ):
+def get_data( obj, prm, lev, date, timelevel=0 ):
     """
     ------------------------------------------------------------------
     fatching the data and finds it latitude and longditude. 
@@ -82,7 +82,8 @@ def get_data( obj, prm, lev, timelevel=0 ):
     
     #obj = pygrib.open( gfile )    #This will be open everytime.. Not very good. Should only open once and the close!..
     #print (prm)
-    parameter = obj( name = prm, level = lev )[ timelevel ]
+    parameter = obj( name = prm, level = lev, dataDate = date )[ timelevel ]
+    print(parameter.dataDate)
     if parameter.gridType == "sh":
         lat, lon, data = sh( parameter.values )
     elif parameter.gridType == "reduced_gg":
@@ -188,8 +189,8 @@ def plot_wind_bar( m, lat, lon, u, v ):
     x, y = m( lon, lat )
     
     #---Have to limit number of windbarbs plotted-----
-    yy = np.arange( 0, y.shape[ 0 ], 70 ) #skips over every 100th value
-    xx = np.arange( 0, x.shape[ 1 ], 70 ) #skips over every 100th value
+    yy = np.arange( 0, y.shape[ 0 ], 30 ) #skips over every 100th value
+    xx = np.arange( 0, x.shape[ 1 ], 30 ) #skips over every 100th value
     points = np.meshgrid( yy, xx )
     m.barbs( x[points], y[points], u[points], v[points], length = 5.5, pivot='middle', linewidth = 1., barbcolor = '#333333' )
    
@@ -245,6 +246,8 @@ def DT(time_lvl = 0, date = 160924 ):
     #-----------------------------------------------------------
     
     fig = plt.figure()
+    
+    
     #-----Setting our map area and projection of interest-------
     m = Basemap( llcrnrlon = -90., llcrnrlat = 0., urcrnrlon = 50., urcrnrlat=70.,\
                resolution = 'l', area_thresh = 10000., projection = 'merc' )
@@ -252,45 +255,46 @@ def DT(time_lvl = 0, date = 160924 ):
     #            lat_1=07.,lat_2=40,lat_0=44,lon_0=-30.)
     #m = Basemap(width=190000,height=2200000,resolution='l', projection='tmerc',lon_0=-30,lat_0=44)
     
-    map_area( m ) # ploting background
+    map_area( m )            # ploting background
     path = "gribs/"
-    file = path +"DT_merge_"+str(date)+".grib"
+    file = path +"DT_var.grib"
     obj = pygrib.open( file )
     
-   
-    #----------Potential temperature--------------------
-    lat, lon, data = get_data( obj,'Potential temperature', 2000, timelevel = time_lvl  )
+    #-FETCHING ALL THE VALUES----------------------------------------
+    #-----Potential temperature---------------------------------------
+    lat, lon, data = get_data( obj,'Potential temperature', 2000, date,  timelevel = time_lvl )
     contour_val = np.linspace( 264, 384, 22 ) #contours for potential tempeature
     plot_contourf( m, lat, lon, data, C, contour_val )
     
-    #---------Relative vorticity, diff level------------
+    #-----Relative vorticity, diff level------------------------------
     contour=[ 2.8E-4, 3.5E-4, 4.5E-4, 6.5E-4, 7.E-4, 7.5E-4, 8.E-4 ] #1.5E-4,2.5E-4]#
-    lat, lon, data925 = get_data( obj, 'Vorticity (relative)', 925, timelevel = time_lvl  )
-
-    lat, lon, data900 = get_data( obj, 'Vorticity (relative)', 900, timelevel = time_lvl  )
- 
-    lat, lon, data850 = get_data( obj, 'Vorticity (relative)', 850, timelevel = time_lvl  )
+    lat, lon, data925 = get_data( obj, 'Vorticity (relative)', 925, date, timelevel = time_lvl )
+    lat, lon, data900 = get_data( obj, 'Vorticity (relative)', 900, date, timelevel = time_lvl )
+    lat, lon, data850 = get_data( obj, 'Vorticity (relative)', 850, date, timelevel = time_lvl )
+    
+    #->--->---->--mean value over height and filtering----------------
     data = np.sqrt(data900**2 + 2*data850**2 + data925**2)
- 
-    footprint = np.array([[0,0,0,1,1,1,1,0,0,0],
+    footprint = np.array([[0,0,0,1,1,1,1,0,0,0],            #footprint=np.ones((3,10))
                           [0,0,1,1,1,2,1,1,0,0],
                           [1,1,1,2,2,1,2,1,1,1],
                           [0,1,1,1,1,2,1,1,1,0],
                           [0,0,1,1,1,1,1,1,0,0]])
-    #footprint=np.ones((3,10))
     
     data = ndimage.generic_filter(data, np.mean,footprint=footprint, mode='wrap')
     plot_contour(m, lat,lon, data,contour, clr = 'k')
     
-    #---------wind bars---------------------------------
-    lat, lon, data_u = get_data( obj , 'U component of wind', 2000, timelevel = time_lvl  )
-    lat, lon, data_v = get_data( obj , 'V component of wind', 2000, timelevel = time_lvl  )
+    #-----Wind barbs----------------------------------------------------
+    lat, lon, data_u = get_data( obj , 'U component of wind', 2000, date, timelevel = time_lvl )
+    lat, lon, data_v = get_data( obj , 'V component of wind', 2000, date, timelevel = time_lvl  )
     plot_wind_bar(m,lat,lon,data_u,data_v)
     #-----------------------------------------------
+    #-----------------------------------------------
     
-    #-----Saving and closing----------------------
+    
+    
+    #-SAVE AND CLOSE----------------------------------------------------
+    #------------------------------------------------------------------
     obj.close()
-    
     if time_lvl == 0:
         t = "0000"
     elif time_lvl == 1:
@@ -309,7 +313,8 @@ def DT(time_lvl = 0, date = 160924 ):
     fig.savefig(fig_name, dpi=600)
     plt.close()
     #plt.show()
-
+    #--------------------------
+    #----------------------------
  
 def user_interface():
     parser = argparse.ArgumentParser(description='Process some integers.')
@@ -319,13 +324,19 @@ def user_interface():
     parser.add_argument('--sum', dest='accumulate', action='store_const',
                         const=sum, default=max,
                         help='sum the integers (default: find the max)')
-    parser.add_argument( "date", type = int,
-        choices= [ 160922,160924,160926,160939],
+    parser.add_argument( "--date", type = int,
+        choices= [ 20160920,20160921,20160922,20160923,20160924,20160925,20160926,20160927, 20160928, 20160929, 20160930, 20161001],
         help = "the date you want. " )
     parser.add_argument( "time", type = str,
         help = "the times you want. ex 160924, 160926, 160922, 160930", 
         default = "all")
-
+        
+    args = parser.parse_args( )
+    
+    date = [20160920, 20160921, 20160922, 20160923, 20160924, 20160925, 20160926, 20160927, 20160928, 20160929, 20160930, 20161001 ]
+    if args.date:
+        date = [args.date]
+    
     if args.time =="all":
         t = [0,1,2]
     elif args.time == "0000" or args.time =="00" or args.time =="0":
@@ -342,9 +353,12 @@ def user_interface():
     print("Creating a dynamic tropopause....\n ...")
     
     #------Setting time and date for plots----------------------
-    #date = 160924 #160926, 160922,160930
-    for n in t:
-        DT(n, args.date)
+    for d in date:
+        print ("one day made")
+        for n in t:
+            DT(n, d)
+            print("one time made")
+            
     #------------------------------------------------------------    
 
 warnings.filterwarnings("ignore",category=matplotlib.mplDeprecation)
